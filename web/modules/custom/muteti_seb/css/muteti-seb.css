@@ -1066,12 +1066,16 @@
   margin-top: .28rem;
 }
 
-/* Edit/delete controls on surgery-board patient cards. */
-.muteti-surgery-card-actions {
-  display: flex;
-  float: right;
+/* Inline edit/delete controls after the patient name. */
+.muteti-surgery-inline-actions {
+  display: inline-flex;
+  align-items: center;
   gap: .2rem;
-  margin: 0 0 .15rem .35rem;
+  margin-left: .35rem;
+  padding: .08rem .2rem;
+  border-radius: .2rem;
+  background: #ff0000;
+  vertical-align: middle;
 }
 .muteti-surgery-edit-link,
 .muteti-surgery-delete-link {
@@ -1084,17 +1088,21 @@
   height: 1.25rem;
   padding: 0;
   border: 0;
-  border-radius: .2rem;
+  border-radius: 0;
+  background: transparent;
   color: #fff;
   font-size: .68rem;
-  font-weight: 800;
+  font-weight: 400;
   line-height: 1;
   text-decoration: none;
   cursor: pointer;
 }
-.muteti-surgery-edit-link {
-  background: #687681;
+.muteti-surgery-inline-actions .muteti-surgery-delete-link {
+  position: static;
+  right: auto;
+  top: auto;
 }
-.muteti-surgery-delete-link {
-  background: #b42323;
+.muteti-surgery-inline-actions .muteti-action-separator {
+  color: #fff;
+  font-weight: 400;
 }

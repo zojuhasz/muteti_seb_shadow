@@ -220,15 +220,33 @@ $card = function ($a) use ($doctors, $can_assign, $can_edit, $can_delete, $mode)
       $patient_prefix = trim((string) ($a->ward_room ?? '')) !== ''
         ? '('.Html::escape($a->ward_room).') '
         : '';
+      $inline_actions = '';
+      if ($can_edit || $can_delete) {
+        $inline_actions = '<span class="muteti-surgery-inline-actions">';
+        if ($can_edit) {
+          $edit_url = Url::fromRoute('muteti_seb.appointment', [
+            'date' => $a->admission_date,
+            'slot' => $a->slot_type,
+          ])->toString();
+          $inline_actions .= '<a class="muteti-surgery-edit-link" href="'.Html::escape($edit_url).'" title="Beteg módosítása" aria-label="Beteg módosítása">M</a>';
+        }
+        if ($can_edit && $can_delete) {
+          $inline_actions .= '<span class="muteti-action-separator">|</span>';
+        }
+        if ($can_delete) {
+          $inline_actions .= '<button type="button" class="muteti-delete-link muteti-surgery-delete-link" data-delete-id="'.(int) $a->id.'" data-delete-patient="'.Html::escape($a->patient_name).'" title="Beteg törlése" aria-label="Beteg törlése">0</button>';
+        }
+        $inline_actions .= '</span>';
+      }
       if ($mode === 'urol') {
-        $patient_content = $patient_prefix.'<strong>'.Html::escape($a->patient_name).'</strong>'
+        $patient_content = $patient_prefix.'<strong>'.Html::escape($a->patient_name).'</strong>'.$inline_actions
           .'<br>Dg.: '.Html::escape($a->diagnosis ?? '')
           .'<br>Műtét: '.Html::escape($a->operation_name ?? '')
           .'<br>Anaesth.: '.Html::escape($a->anaesth ?? '')
           .'<br><span class="muteti-staff">Orvos: '.Html::escape($doctor->name ?? '-').'</span>';
       }
       else {
-        $patient_content = $patient_prefix.'<strong>'.Html::escape($a->patient_name).'</strong>'
+        $patient_content = $patient_prefix.'<strong>'.Html::escape($a->patient_name).'</strong>'.$inline_actions
           .'<br>Dg.: '.Html::escape($a->diagnosis ?? '')
           .'<br>Műtét: '.Html::escape($a->operation_name ?? '')
           .'<br><span class="muteti-staff">Orvos: '.Html::escape($doctor->name ?? '-').'</span>';
@@ -236,36 +254,6 @@ $card = function ($a) use ($doctors, $can_assign, $can_edit, $can_delete, $mode)
       return [
         '#type' => 'container',
         '#attributes' => $attributes,
-        'actions' => ($can_edit || $can_delete) ? [
-          '#type' => 'container',
-          '#attributes' => ['class' => ['muteti-surgery-card-actions']],
-          'edit' => $can_edit ? [
-            '#type' => 'link',
-            '#title' => 'M',
-            '#url' => Url::fromRoute('muteti_seb.appointment', [
-              'date' => $a->admission_date,
-              'slot' => $a->slot_type,
-            ]),
-            '#attributes' => [
-              'class' => ['muteti-surgery-edit-link'],
-              'title' => 'Beteg módosítása',
-              'aria-label' => 'Beteg módosítása',
-            ],
-          ] : [],
-          'delete' => $can_delete ? [
-            '#type' => 'html_tag',
-            '#tag' => 'button',
-            '#value' => 'T',
-            '#attributes' => [
-              'type' => 'button',
-              'class' => ['muteti-delete-link', 'muteti-surgery-delete-link'],
-              'data-delete-id' => (string) $a->id,
-              'data-delete-patient' => $a->patient_name,
-              'title' => 'Beteg törlése',
-              'aria-label' => 'Beteg törlése',
-            ],
-          ] : [],
-        ] : [],
         'content' => [
           '#markup' => $patient_content,
         ],

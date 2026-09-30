@@ -597,7 +597,16 @@
 .muteti-drag-card.is-draggable { cursor: grab; }
 .muteti-drag-card.is-draggable:active { cursor: grabbing; }
 .muteti-drag-card.is-aznm { border-left: 4px solid #c00; }
-.muteti-dropzone.is-over { outline: 3px solid #3478d4; background: #eef5ff; }
+
+/* Surgery inline action colors. */
+.muteti-surgery-inline-actions { padding: 0; background: transparent; position: relative; z-index: 2; cursor: default; }
+.muteti-surgery-edit-link,
+.muteti-surgery-delete-link { border-radius: .2rem; pointer-events: auto; user-select: none; }
+.muteti-surgery-edit-link { background: #6b7280; color: #fff; }
+.muteti-surgery-edit-link:hover,
+.muteti-surgery-edit-link:focus { background: #4b5563; color: #fff; text-decoration: none; }
+.muteti-surgery-inline-actions .muteti-surgery-delete-link { background: #ff0000; color: #fff; }
+.muteti-surgery-inline-actions .muteti-action-separator { color: #5f6f7f; }.muteti-dropzone.is-over { outline: 3px solid #3478d4; background: #eef5ff; }
 .muteti-doctor-table { width: 100%; margin: 0; }
 .muteti-doctor-table th { background: linear-gradient(#edf4fa, #dce8f2); color: #183b5c; }
 .muteti-doctor-table th, .muteti-doctor-table td { padding: .65rem; border-bottom: 1px solid #d5dde5; vertical-align: middle; }

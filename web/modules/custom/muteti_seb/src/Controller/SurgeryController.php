@@ -32,6 +32,8 @@ $mode = DepartmentMode::get($department);
     $availability_enabled = DepartmentMode::featureEnabled($department, 'availability_enabled');
     $away_enabled = DepartmentMode::featureEnabled($department, 'away_enabled');
     $can_assign = $this->currentUser()->hasPermission('assign operating room');
+    $can_edit = $this->currentUser()->hasPermission('edit surgery appointment');
+    $can_delete = $this->currentUser()->hasPermission('move surgery appointment');
     $show_drag_hint = (bool) array_intersect(
       ['muteti_orvos1', 'muteti_orvos2', 'muteti_boss'],
       $this->currentUser()->getRoles()
@@ -180,7 +182,7 @@ $mode = DepartmentMode::get($department);
     }
     $doctors=$doctor_ids?$this->database->select('muteti_doctor','d')->fields('d')->condition('id',array_unique($doctor_ids),'IN')->execute()->fetchAllAssoc('id'):[];
  
-$card = function ($a) use ($doctors, $can_assign, $mode): array {
+$card = function ($a) use ($doctors, $can_assign, $can_edit, $can_delete, $mode): array {
       $doctor = $doctors[$a->doctor_id] ?? NULL;
       $staff = [];
       foreach ([$a->doctor_id, $a->assistant1_id, $a->assistant2_id, $a->assistant3_id] as $staff_id) {
@@ -215,15 +217,18 @@ $card = function ($a) use ($doctors, $can_assign, $mode): array {
         }
         $attributes['style'] = $style;
       }
+      $patient_prefix = trim((string) ($a->ward_room ?? '')) !== ''
+        ? '('.Html::escape($a->ward_room).') '
+        : '';
       if ($mode === 'urol') {
-        $patient_content = '<strong>'.Html::escape($a->patient_name).'</strong>'
+        $patient_content = $patient_prefix.'<strong>'.Html::escape($a->patient_name).'</strong>'
           .'<br>Dg.: '.Html::escape($a->diagnosis ?? '')
           .'<br>Műtét: '.Html::escape($a->operation_name ?? '')
           .'<br>Anaesth.: '.Html::escape($a->anaesth ?? '')
           .'<br><span class="muteti-staff">Orvos: '.Html::escape($doctor->name ?? '-').'</span>';
       }
       else {
-        $patient_content = '<strong>'.Html::escape($a->patient_name).'</strong>'
+        $patient_content = $patient_prefix.'<strong>'.Html::escape($a->patient_name).'</strong>'
           .'<br>Dg.: '.Html::escape($a->diagnosis ?? '')
           .'<br>Műtét: '.Html::escape($a->operation_name ?? '')
           .'<br><span class="muteti-staff">Orvos: '.Html::escape($doctor->name ?? '-').'</span>';
@@ -231,6 +236,36 @@ $card = function ($a) use ($doctors, $can_assign, $mode): array {
       return [
         '#type' => 'container',
         '#attributes' => $attributes,
+        'actions' => ($can_edit || $can_delete) ? [
+          '#type' => 'container',
+          '#attributes' => ['class' => ['muteti-surgery-card-actions']],
+          'edit' => $can_edit ? [
+            '#type' => 'link',
+            '#title' => 'M',
+            '#url' => Url::fromRoute('muteti_seb.appointment', [
+              'date' => $a->admission_date,
+              'slot' => $a->slot_type,
+            ]),
+            '#attributes' => [
+              'class' => ['muteti-surgery-edit-link'],
+              'title' => 'Beteg módosítása',
+              'aria-label' => 'Beteg módosítása',
+            ],
+          ] : [],
+          'delete' => $can_delete ? [
+            '#type' => 'html_tag',
+            '#tag' => 'button',
+            '#value' => 'T',
+            '#attributes' => [
+              'type' => 'button',
+              'class' => ['muteti-delete-link', 'muteti-surgery-delete-link'],
+              'data-delete-id' => (string) $a->id,
+              'data-delete-patient' => $a->patient_name,
+              'title' => 'Beteg törlése',
+              'aria-label' => 'Beteg törlése',
+            ],
+          ] : [],
+        ] : [],
         'content' => [
           '#markup' => $patient_content,
         ],
@@ -241,6 +276,7 @@ $card = function ($a) use ($doctors, $can_assign, $mode): array {
         'library' => ['muteti_seb/surgery_board', 'muteti_seb/availability'],
         'drupalSettings' => ['mutetiSeb' => [
           'endpoint' => Url::fromRoute('muteti_seb.assignment', [], ['query' => ['token' => $this->csrf->get('muteti/api/assignment')]])->toString(),
+          'appointmentDeleteEndpoint' => Url::fromRoute('muteti_seb.appointment_delete', [], ['query' => ['token' => $this->csrf->get('muteti/api/appointment-delete')]])->toString(),
           'availabilityEndpoint' => Url::fromRoute('muteti_seb.availability_update', [], ['query' => ['token' => $this->csrf->get('muteti/api/tavollet')]])->toString(),
         ]],
       ],

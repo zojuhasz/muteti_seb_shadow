@@ -201,7 +201,14 @@
         }
       }
       const dayTypeSelects = once('muteti-day-type', '.muteti-day-type-select', context);
-      dayTypeSelects.forEach((select) => {
+
+      // Keep inline controls clickable inside draggable patient cards.
+document.addEventListener('dragstart', (event) => {
+  if (event.target.closest('.muteti-surgery-inline-actions')) event.preventDefault();
+}, true);
+document.addEventListener('mousedown', (event) => {
+  if (event.target.closest('.muteti-surgery-inline-actions')) event.stopPropagation();
+}, true);dayTypeSelects.forEach((select) => {
         select.addEventListener('change', async () => {
           const previousValue = select.dataset.previousValue;
           select.disabled = true;

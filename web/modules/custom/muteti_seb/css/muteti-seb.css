@@ -970,47 +970,39 @@
   height: 1.1rem;
 }
 
-/* Sűrűbb előjegyzési és műtéti táblák. */
+/* Denser booking and surgery boards to reduce vertical scrolling. */
 .muteti-booking-table th {
   padding-top: .42rem;
   padding-bottom: .42rem;
 }
-
 .muteti-booking-column-cell {
   padding: .08rem;
 }
-
 .muteti-slot-link,
 .muteti-empty-slot,
 .muteti-patient {
   min-height: 38px;
 }
-
 .muteti-empty-slot {
   padding: .1rem;
 }
-
 .muteti-empty-slot .muteti-slot-link {
   min-height: 1.1rem;
   padding: .12rem;
 }
-
 .muteti-empty-slot-actions {
   min-height: 1.2rem;
   margin-top: .12rem;
   padding-bottom: 0;
 }
-
 .muteti-patient {
   padding-top: .2rem;
   padding-bottom: .2rem;
 }
-
 .muteti-patient-topbar {
   min-height: 1.2rem;
   margin-bottom: .14rem;
 }
-
 .muteti-staff,
 .muteti-patient-notes {
   margin-top: .12rem;
@@ -1019,36 +1011,90 @@
 .muteti-surgery-board {
   padding: .65rem;
 }
-
 .muteti-daily-heading {
   margin-bottom: .55rem;
 }
-
 .muteti-board-layout,
 .muteti-rooms {
   gap: .55rem;
 }
-
 .muteti-room,
 .muteti-waiting {
   min-height: 76px;
   padding: .45rem;
 }
-
 .muteti-zone-title {
   margin: -.45rem -.45rem .4rem;
   padding: .38rem .55rem;
   font-size: .9rem;
 }
-
 .muteti-drag-card {
   margin: .28rem 0;
   padding: .4rem .5rem;
   font-size: .76rem;
   line-height: 1.12;
 }
-
 .muteti-drag-card.is-care-one-day,
 .muteti-drag-card.is-care-same-day {
   padding-left: 1.1rem;
+}
+
+/* A room label has its own narrow column next to the patient cards. */
+.muteti-room {
+  display: grid;
+  grid-template-columns: 4.25rem minmax(0, 1fr);
+  column-gap: .4rem;
+  align-items: start;
+}
+.muteti-room .muteti-zone-title {
+  grid-column: 1;
+  grid-row: 1;
+  margin: .28rem 0;
+  padding: .4rem .25rem;
+  border: 0;
+  border-radius: .35rem;
+  background: #dce8f2;
+  text-align: center;
+  font-size: .76rem;
+  line-height: 1.12;
+}
+.muteti-room .muteti-drag-card {
+  grid-column: 2;
+  width: auto;
+}
+.muteti-room .muteti-drag-card:first-of-type {
+  margin-top: .28rem;
+}
+
+/* Edit/delete controls on surgery-board patient cards. */
+.muteti-surgery-card-actions {
+  display: flex;
+  float: right;
+  gap: .2rem;
+  margin: 0 0 .15rem .35rem;
+}
+.muteti-surgery-edit-link,
+.muteti-surgery-delete-link {
+  display: inline-flex;
+  position: static;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 1.25rem;
+  height: 1.25rem;
+  padding: 0;
+  border: 0;
+  border-radius: .2rem;
+  color: #fff;
+  font-size: .68rem;
+  font-weight: 800;
+  line-height: 1;
+  text-decoration: none;
+  cursor: pointer;
+}
+.muteti-surgery-edit-link {
+  background: #687681;
+}
+.muteti-surgery-delete-link {
+  background: #b42323;
 }

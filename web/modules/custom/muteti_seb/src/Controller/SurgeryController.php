@@ -255,7 +255,7 @@ $card = function ($a) use ($doctors, $can_assign, $can_edit, $can_delete, $mode)
         '#type' => 'container',
         '#attributes' => $attributes,
         'content' => [
-          '#markup' => $patient_content,
+          '#markup' => \Drupal\Core\Render\Markup::create($patient_content),
         ],
       ];
     };

@@ -98,14 +98,19 @@ $import_doctor_background = static function (?string $value) use (
   $code = strtoupper($matches[1]);
   $filename = $code.'.gif';
   $source_path = rtrim($legacy_doctor_background_dir, '/').'/'.$filename;
-  if (!is_file($source_path)) {
-    print "FIGYELMEZTETÉS: hiányzó D7 orvosháttér: {$source_path}\n";
-    return NULL;
-  }
   $target_uri = $doctor_background_target_dir.'/'.$filename;
   $target_path = rtrim($doctor_background_target_path, '/').'/'.$filename;
-  if (!copy($source_path, $target_path)) {
-    throw new RuntimeException("Nem másolható az orvosháttér: {$source_path}");
+  if (is_file($source_path)) {
+    if (!copy($source_path, $target_path)) {
+      throw new RuntimeException("Nem másolható az orvosháttér: {$source_path}");
+    }
+  }
+  elseif (!is_file($target_path)) {
+    print "FIGYELMEZTETÉS: hiányzó D7 és D11 orvosháttér: {$filename}\n";
+    return NULL;
+  }
+  else {
+    print "Meglévő D11 orvosháttér használata: {$target_uri}\n";
   }
   $matches = $file_storage->loadByProperties(['uri' => $target_uri]);
   $file = $matches ? reset($matches) : File::create([
@@ -327,6 +332,30 @@ if ($department_nids) {
   $doctor_query->condition('o.field_oszt_ly_nid', $department_nids, 'IN');
 }
 $legacy_doctors = $doctor_query->execute()->fetchAll();
+
+// Fill missing colors from duplicate doctors in the same department.
+$duplicate_colors = [];
+foreach ($legacy_doctors as $doctor) {
+  $key = (int) $doctor->department_nid.'|'.$normalize_name($doctor->title);
+  foreach (['background_color', 'text_color'] as $field) {
+    $color = $valid_color($doctor->{$field});
+    if ($color !== NULL) {
+      $duplicate_colors[$key][$field][strtolower($color)] = $color;
+    }
+  }
+}
+foreach ($legacy_doctors as $doctor) {
+  $key = (int) $doctor->department_nid.'|'.$normalize_name($doctor->title);
+  foreach (['background_color', 'text_color'] as $field) {
+    if ($valid_color($doctor->{$field}) !== NULL) {
+      continue;
+    }
+    $choices = $duplicate_colors[$key][$field] ?? [];
+    if (count($choices) === 1) {
+      $doctor->{$field} = reset($choices);
+    }
+  }
+}
 
 $doctor_id_by_name = [];
 $doctor_node_storage = \Drupal::entityTypeManager()->getStorage('node');

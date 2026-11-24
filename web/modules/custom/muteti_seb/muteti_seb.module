@@ -110,13 +110,63 @@ function muteti_seb_entity_presave(EntityInterface $entity): void {
   }
   $database = \Drupal::database();
   $registry_id = (int) ($entity->get('field_muteti_registry_id')->value ?? 0);
+  $legacy_nid = (int) ($entity->get('field_muteti_legacy_nid')->value ?? 0);
+  $user_id = (int) ($entity->get('field_muteti_user')->target_id ?? 0);
+  $department = $entity->get('field_muteti_department')->value ?: 'Sebészet';
+  $name = trim((string) $entity->label());
+
+  // Older migrations stored the Drupal node ID in this field instead of the
+  // muteti_doctor registry ID. Validate the mapping before updating a row.
+  if ($registry_id) {
+    $registry_row = $database->select('muteti_doctor', 'd')
+      ->fields('d', ['id', 'legacy_nid'])
+      ->condition('id', $registry_id)
+      ->execute()
+      ->fetchAssoc();
+    if (!$registry_row
+      || ($legacy_nid && (int) $registry_row['legacy_nid'] !== $legacy_nid)) {
+      $registry_id = 0;
+    }
+  }
+
+  // The D7 node ID is the stable identifier across full D7 synchronizations,
+  // while the auto-increment muteti_doctor ID can change after replacement.
+  if (!$registry_id && $legacy_nid) {
+    $registry_id = (int) $database->select('muteti_doctor', 'd')
+      ->fields('d', ['id'])
+      ->condition('legacy_nid', $legacy_nid)
+      ->range(0, 1)
+      ->execute()
+      ->fetchField();
+  }
+  if (!$registry_id && $user_id) {
+    $registry_id = (int) $database->select('muteti_doctor', 'd')
+      ->fields('d', ['id'])
+      ->condition('user_id', $user_id)
+      ->condition('department', $department)
+      ->range(0, 1)
+      ->execute()
+      ->fetchField();
+  }
+  if (!$registry_id && $name !== '') {
+    $registry_id = (int) $database->select('muteti_doctor', 'd')
+      ->fields('d', ['id'])
+      ->condition('name', $name)
+      ->condition('department', $department)
+      ->range(0, 1)
+      ->execute()
+      ->fetchField();
+  }
+  if ($registry_id) {
+    $entity->set('field_muteti_registry_id', $registry_id);
+  }
   $fields = [
-    'legacy_nid' => $entity->get('field_muteti_legacy_nid')->value ?: NULL,
-    'user_id' => $entity->get('field_muteti_user')->target_id ?: NULL,
-    'name' => trim((string) $entity->label()),
+    'legacy_nid' => $legacy_nid ?: NULL,
+    'user_id' => $user_id ?: NULL,
+    'name' => $name,
     'background_color' => $entity->get('field_muteti_background')->value ?: '#eef2f6',
     'text_color' => $entity->get('field_muteti_text_color')->value ?: '#111111',
-    'department' => $entity->get('field_muteti_department')->value ?: 'Sebészet',
+    'department' => $department,
     'active' => (int) (bool) $entity->get('field_muteti_active')->value,
   ];
   if ($database->schema()->fieldExists('muteti_doctor', 'background_gif')) {
@@ -125,7 +175,7 @@ function muteti_seb_entity_presave(EntityInterface $entity): void {
       : NULL;
     $fields['background_gif'] = $gif ? $gif->getFileUri() : NULL;
   }
-  if ($registry_id && $database->select('muteti_doctor', 'd')->condition('id', $registry_id)->countQuery()->execute()->fetchField()) {
+  if ($registry_id) {
     $database->update('muteti_doctor')->fields($fields)->condition('id', $registry_id)->execute();
   }
   else {

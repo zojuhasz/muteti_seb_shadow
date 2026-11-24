@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 use Drupal\Core\Database\Database;
+use Drupal\Core\File\FileSystemInterface;
+use Drupal\file\Entity\File;
 use Drupal\user\Entity\Role;
 use Drupal\user\Entity\User;
 
@@ -64,6 +66,58 @@ $valid_date = static function (?string $date): ?string {
 $valid_color = static function (?string $color): ?string {
   $color = trim((string) $color);
   return preg_match('/^#[0-9a-f]{3}([0-9a-f]{3})?$/i', $color) ? $color : NULL;
+};
+$doctor_map_key = static fn (string $department, ?string $name): string =>
+  $department."\0".$normalize_name($name);
+
+// D7 stores animated doctor backgrounds as a short token in field_sz_n:
+// %MP means files/orvoshatter/MP.gif, %TV means TV.gif, and so on.
+$legacy_doctor_background_dir = getenv('MUTETI_LEGACY_DOCTOR_BACKGROUND_DIR')
+  ?: '/var/www/muteti_main/files/orvoshatter';
+$doctor_background_target_dir = 'public://muteti-orvos-hatterek';
+$file_system = \Drupal::service('file_system');
+$file_system->prepareDirectory(
+  $doctor_background_target_dir,
+  FileSystemInterface::CREATE_DIRECTORY | FileSystemInterface::MODIFY_PERMISSIONS,
+);
+$doctor_background_target_path = $file_system->realpath($doctor_background_target_dir);
+if (!$doctor_background_target_path) {
+  throw new RuntimeException("Nem hozható létre a célkönyvtár: {$doctor_background_target_dir}");
+}
+$file_storage = \Drupal::entityTypeManager()->getStorage('file');
+$import_doctor_background = static function (?string $value) use (
+  $legacy_doctor_background_dir,
+  $doctor_background_target_dir,
+  $doctor_background_target_path,
+  $file_storage,
+): ?File {
+  $value = trim((string) $value);
+  if (!preg_match('/^%([a-z0-9_-]{2})$/i', $value, $matches)) {
+    return NULL;
+  }
+  $code = strtoupper($matches[1]);
+  $filename = $code.'.gif';
+  $source_path = rtrim($legacy_doctor_background_dir, '/').'/'.$filename;
+  if (!is_file($source_path)) {
+    print "FIGYELMEZTETÉS: hiányzó D7 orvosháttér: {$source_path}\n";
+    return NULL;
+  }
+  $target_uri = $doctor_background_target_dir.'/'.$filename;
+  $target_path = rtrim($doctor_background_target_path, '/').'/'.$filename;
+  if (!copy($source_path, $target_path)) {
+    throw new RuntimeException("Nem másolható az orvosháttér: {$source_path}");
+  }
+  $matches = $file_storage->loadByProperties(['uri' => $target_uri]);
+  $file = $matches ? reset($matches) : File::create([
+    'uri' => $target_uri,
+    'filename' => $filename,
+    'filemime' => 'image/gif',
+    'uid' => 1,
+    'status' => 1,
+  ]);
+  $file->setPermanent();
+  $file->save();
+  return $file;
 };
 
 // Department nodes are absent from the partial node dump, so use the original
@@ -275,51 +329,94 @@ if ($department_nids) {
 $legacy_doctors = $doctor_query->execute()->fetchAll();
 
 $doctor_id_by_name = [];
+$doctor_node_storage = \Drupal::entityTypeManager()->getStorage('node');
 $imported_doctors = 0;
 foreach ($legacy_doctors as $doctor) {
+  $department = $legacy_department_map[(int) $doctor->department_nid] ?? 'Ismeretlen';
+  $background_file = $import_doctor_background($doctor->background_color);
   $fields = [
     'legacy_nid' => (int) $doctor->nid,
     'user_id' => $new_uid_by_legacy_uid[(int) $doctor->legacy_uid] ?? NULL,
     'name' => trim($doctor->title),
     'background_color' => $valid_color($doctor->background_color),
     'text_color' => $valid_color($doctor->text_color),
-    'department' => $legacy_department_map[(int) $doctor->department_nid] ?? 'Ismeretlen',
+    'department' => $department,
     'active' => (int) $doctor->status,
   ];
+  if ($target->schema()->fieldExists('muteti_doctor', 'background_gif')) {
+    $fields['background_gif'] = $background_file?->getFileUri();
+  }
   $target->merge('muteti_doctor')
     ->key('legacy_nid', (int) $doctor->nid)
     ->fields($fields)
     ->execute();
   $id = $target->select('muteti_doctor', 'd')->fields('d', ['id'])->condition('legacy_nid', $doctor->nid)->execute()->fetchField();
-  $doctor_id_by_name[$normalize_name($doctor->title)] = (int) $id;
+  $doctor_id_by_name[$doctor_map_key($department, $doctor->title)] = (int) $id;
+
+  // Keep the Drupal Orvos content synchronized with the recreated registry
+  // row, including its new auto-increment ID and optional D7 GIF background.
+  $node_ids = $doctor_node_storage->getQuery()
+    ->accessCheck(FALSE)
+    ->condition('type', 'muteti_doctor')
+    ->condition('field_muteti_legacy_nid', (int) $doctor->nid)
+    ->execute();
+  $doctor_node = $node_ids
+    ? $doctor_node_storage->load((int) reset($node_ids))
+    : $doctor_node_storage->create(['type' => 'muteti_doctor']);
+  $doctor_node->setTitle(trim($doctor->title));
+  $doctor_node->set('field_muteti_registry_id', (int) $id);
+  $doctor_node->set('field_muteti_legacy_nid', (int) $doctor->nid);
+  $doctor_node->set('field_muteti_user', $fields['user_id']);
+  $doctor_node->set('field_muteti_department', $department);
+  $doctor_node->set('field_muteti_background', $fields['background_color'] ?: '#eef2f6');
+  $doctor_node->set('field_muteti_text_color', $fields['text_color'] ?: '#111111');
+  $doctor_node->set('field_muteti_active', (bool) $fields['active']);
+  $doctor_node->set('field_muteti_background_gif', $background_file ? [
+    'target_id' => $background_file->id(),
+    'alt' => '',
+    'title' => '',
+  ] : []);
+  $doctor_node->save();
   $imported_doctors++;
 }
 
 // Add doctors/assistants referenced by appointments but absent in the node list.
-$name_query = $source->select('_elojegyzes', 'e');
-$name_query->condition('osztaly', $selected_departments, 'IN');
-$name_query->addExpression('DISTINCT orvos', 'name');
-$referenced_names = $name_query->execute()->fetchCol();
-foreach (['assz1', 'assz2', 'assz3'] as $assistant_field) {
+$referenced_people = [];
+foreach (['orvos', 'assz1', 'assz2', 'assz3'] as $assistant_field) {
   $query = $source->select('_elojegyzes', 'e');
+  $query->distinct();
+  $query->fields('e', ['osztaly']);
+  $query->addField('e', $assistant_field, 'name');
   $query->condition('osztaly', $selected_departments, 'IN');
-  $query->addExpression("DISTINCT {$assistant_field}", 'name');
-  $referenced_names = array_merge($referenced_names, $query->execute()->fetchCol());
+  foreach ($query->execute() as $person) {
+    $key = $doctor_map_key((string) $person->osztaly, (string) $person->name);
+    $referenced_people[$key] = [
+      'department' => (string) $person->osztaly,
+      'name' => trim((string) $person->name),
+    ];
+  }
 }
-foreach (array_unique($referenced_names) as $name) {
+foreach ($referenced_people as $key => $person) {
+  $name = $person['name'];
+  $department = $person['department'];
   $normalized = $normalize_name($name);
-  if ($normalized === '' || $normalized === '-' || isset($doctor_id_by_name[$normalized])) {
+  if ($normalized === '' || $normalized === '-' || isset($doctor_id_by_name[$key])) {
     continue;
   }
-  $id = $target->select('muteti_doctor', 'd')->fields('d', ['id'])->condition('name', trim($name))->execute()->fetchField();
+  $id = $target->select('muteti_doctor', 'd')
+    ->fields('d', ['id'])
+    ->condition('name', $name)
+    ->condition('department', $department)
+    ->execute()
+    ->fetchField();
   if (!$id) {
     $id = $target->insert('muteti_doctor')->fields([
-      'name' => trim($name),
-      'department' => 'Ismeretlen',
+      'name' => $name,
+      'department' => $department,
       'active' => 1,
     ])->execute();
   }
-  $doctor_id_by_name[$normalized] = (int) $id;
+  $doctor_id_by_name[$key] = (int) $id;
   $imported_doctors++;
 }
 
@@ -390,10 +487,10 @@ while ($appointment = $appointments->fetchObject()) {
     'blood_type' => trim($appointment->vercsop),
     'anaesth' => $anaesth ?: NULL,
     'notes' => $notes,
-    'doctor_id' => $doctor_id_by_name[$normalize_name($appointment->orvos)] ?? NULL,
-    'assistant1_id' => $doctor_id_by_name[$normalize_name($appointment->assz1)] ?? NULL,
-    'assistant2_id' => $doctor_id_by_name[$normalize_name($appointment->assz2)] ?? NULL,
-    'assistant3_id' => $doctor_id_by_name[$normalize_name($appointment->assz3)] ?? NULL,
+    'doctor_id' => $doctor_id_by_name[$doctor_map_key($department, $appointment->orvos)] ?? NULL,
+    'assistant1_id' => $doctor_id_by_name[$doctor_map_key($department, $appointment->assz1)] ?? NULL,
+    'assistant2_id' => $doctor_id_by_name[$doctor_map_key($department, $appointment->assz2)] ?? NULL,
+    'assistant3_id' => $doctor_id_by_name[$doctor_map_key($department, $appointment->assz3)] ?? NULL,
     'surgery_date' => $surgery_date,
     'operating_room' => $operating_room,
     'surgery_order' => max(0, (int) $appointment->mut_sorrend),
